@@ -1,64 +1,23 @@
 from flask import Flask, jsonify, request
-# from flask_sqlalchemy import SQLAlchemy
-# from src.config.config import Config
-from dotenv import load_dotenv
-import os
-import psycopg2
-
-load_dotenv()  # Load variables from .env file
+from flask_sqlalchemy import SQLAlchemy
+# Ensure your imports are correctly referencing your project structure
+from api.auth import auth_bp
 
 app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-GOOGLE_MAPS_API_KEY = os.getenv('GOOGLE_MAPS_API_KEY')  # Make sure to set this in your environment variables
-PLACES_API_URL = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
+db = SQLAlchemy(app)
 
-# Lookup places
-@app.route('/lookup_places', methods=['GET'])
-def lookup_places():
-    input_text = request.args.get('input')
-    if not input_text:
-        return jsonify({'error': 'Missing input parameter'}), 400
+# Register blueprints for modular routes, auth_bp contains our auth routes
+app.register_blueprint(auth_bp, url_prefix='/auth')
 
-    params = {
-        'input': input_text,
-        'inputtype': 'textquery',
-        'fields': 'formatted_address,name,geometry',
-        'key': GOOGLE_MAPS_API_KEY
-    }
-    response = requests.get(PLACES_API_URL, params=params)
-    if response.status_code == 200:
-        return jsonify(response.json()['candidates'])
-    else:
-        return jsonify({'error': 'Failed to fetch places'}), response.status_code
-
-
-# Get database connection
-def get_db_connection():
-    conn = psycopg2.connect(
-        dbname=os.getenv('DB_NAME'),
-        user=os.getenv('DB_USER'),
-        password=os.getenv('DB_PASSWORD'),
-        host=os.getenv('DB_HOST'),
-        port=os.getenv('DB_PORT')
-    )
-    return conn
-
-# Get saved places from database
-def get_saved_places(user_id):
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT * FROM places WHERE user_id = %s', (user_id,))
-    places = cur.fetchall()
-    cur.close()
-    conn.close()
-    return places
-
-# Return saved places to user
-@app.route('/saved_places', methods=['GET'])
-def saved_places():
-    user_id = request.args.get('user_id')  # Assuming user_id is passed as a query parameter
-    places = get_saved_places(user_id)
-    return jsonify(places)
+# Import models after db initialization to avoid circular imports
+from models.user import User
 
 if __name__ == '__main__':
+    with app.app_context():
+        # This ensures tables are created within the app context
+        db.create_all()
     app.run(debug=True)
+
