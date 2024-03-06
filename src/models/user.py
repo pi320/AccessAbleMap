@@ -1,0 +1,1 @@
+#define the database schema for users
